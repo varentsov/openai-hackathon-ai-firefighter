@@ -1,0 +1,260 @@
+name: mock-sre-lab
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+    env_file:
+      - .env
+    environment:
+      APP_PORT: ${APP_PORT:-8080}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://alloy:4317}
+      GLITCHTIP_DSN: ${GLITCHTIP_DSN:-}
+      GLITCHTIP_BOOTSTRAP_ENV_FILE: /app/runtime/glitchtip.env
+      SCENARIO_FILE: ${SCENARIO_FILE:-/app/scenarios/scenarios.json}
+      FAULT_SCHEDULE: ${FAULT_SCHEDULE:-default}
+    volumes:
+      - ./scenarios:/app/scenarios:ro
+      - glitchtip-bootstrap-data:/app/runtime:ro
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    depends_on:
+      alloy:
+        condition: service_started
+      glitchtip-bootstrap:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  loadgen:
+    build:
+      context: .
+      dockerfile: loadgen/Dockerfile
+    env_file:
+      - .env
+    environment:
+      LOADGEN_ENABLED: ${LOADGEN_ENABLED:-true}
+      LOADGEN_RPS: ${LOADGEN_RPS:-2.5}
+      LOADGEN_BASE_URL: ${LOADGEN_BASE_URL:-http://app:8080}
+      SCENARIO_FILE: /app/scenarios/scenarios.json
+      FAULT_SCHEDULE: ${FAULT_SCHEDULE:-default}
+    depends_on:
+      app:
+        condition: service_started
+    volumes:
+      - ./scenarios:/app/scenarios:ro
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:latest
+    command:
+      - -config.file=/etc/loki/config.yml
+    volumes:
+      - ./infra/loki/config.yml:/etc/loki/config.yml:ro
+      - loki-data:/loki
+    ports:
+      - "3100:3100"
+    restart: unless-stopped
+
+  tempo:
+    image: grafana/tempo:latest
+    user: "0"
+    command:
+      - -config.file=/etc/tempo/config.yml
+    volumes:
+      - ./infra/tempo/config.yml:/etc/tempo/config.yml:ro
+      - tempo-data:/tmp/tempo
+    ports:
+      - "3200:3200"
+      - "4317:4317"
+      - "4318:4318"
+    restart: unless-stopped
+
+  alloy:
+    image: grafana/alloy:latest
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./infra/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/alloy/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "12345:12345"
+    depends_on:
+      loki:
+        condition: service_started
+      tempo:
+        condition: service_started
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    env_file:
+      - .env
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_DEFAULT_THEME: light
+    volumes:
+      - ./infra/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./infra/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      prometheus:
+        condition: service_started
+      loki:
+        condition: service_started
+      tempo:
+        condition: service_started
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${GLITCHTIP_POSTGRES_DB:-glitchtip}
+      POSTGRES_USER: ${GLITCHTIP_POSTGRES_USER:-glitchtip}
+      POSTGRES_PASSWORD: ${GLITCHTIP_POSTGRES_PASSWORD:-glitchtip}
+    volumes:
+      - glitchtip-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${GLITCHTIP_POSTGRES_USER:-glitchtip} -d ${GLITCHTIP_POSTGRES_DB:-glitchtip}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    command: ["valkey-server", "--save", "", "--appendonly", "no"]
+    restart: unless-stopped
+
+  glitchtip-web:
+    image: glitchtip/glitchtip:latest
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://${GLITCHTIP_POSTGRES_USER:-glitchtip}:${GLITCHTIP_POSTGRES_PASSWORD:-glitchtip}@postgres:5432/${GLITCHTIP_POSTGRES_DB:-glitchtip}
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY:-replace-me}
+      DEBUG: "True"
+      PORT: 8000
+      GLITCHTIP_DOMAIN: ${GLITCHTIP_DOMAIN:-http://localhost:8000}
+      EMAIL_URL: consolemail://
+      ENABLE_USER_REGISTRATION: "True"
+      ENABLE_ORGANIZATION_CREATION: "True"
+      DEFAULT_FROM_EMAIL: glitchtip@localhost
+      CELERY_WORKER_AUTOSCALE: 1,2
+      VALKEY_URL: ${GLITCHTIP_VALKEY_URL:-redis://valkey:6379/0}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_started
+      glitchtip-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "${GLITCHTIP_PORT:-8000}:8000"
+    restart: unless-stopped
+
+  glitchtip-worker:
+    image: glitchtip/glitchtip:latest
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://${GLITCHTIP_POSTGRES_USER:-glitchtip}:${GLITCHTIP_POSTGRES_PASSWORD:-glitchtip}@postgres:5432/${GLITCHTIP_POSTGRES_DB:-glitchtip}
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY:-replace-me}
+      DEBUG: "True"
+      PORT: 8000
+      GLITCHTIP_DOMAIN: ${GLITCHTIP_DOMAIN:-http://localhost:8000}
+      EMAIL_URL: consolemail://
+      ENABLE_USER_REGISTRATION: "True"
+      ENABLE_ORGANIZATION_CREATION: "True"
+      DEFAULT_FROM_EMAIL: glitchtip@localhost
+      VALKEY_URL: ${GLITCHTIP_VALKEY_URL:-redis://valkey:6379/0}
+      SERVER_ROLE: worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_started
+      glitchtip-migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  glitchtip-migrate:
+    image: glitchtip/glitchtip:latest
+    command: ./manage.py migrate
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://${GLITCHTIP_POSTGRES_USER:-glitchtip}:${GLITCHTIP_POSTGRES_PASSWORD:-glitchtip}@postgres:5432/${GLITCHTIP_POSTGRES_DB:-glitchtip}
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY:-replace-me}
+      DEBUG: "True"
+      PORT: 8000
+      GLITCHTIP_DOMAIN: ${GLITCHTIP_DOMAIN:-http://localhost:8000}
+      EMAIL_URL: consolemail://
+      ENABLE_USER_REGISTRATION: "True"
+      ENABLE_ORGANIZATION_CREATION: "True"
+      DEFAULT_FROM_EMAIL: glitchtip@localhost
+      VALKEY_URL: ${GLITCHTIP_VALKEY_URL:-redis://valkey:6379/0}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_started
+
+  glitchtip-bootstrap:
+    image: glitchtip/glitchtip:latest
+    user: "0"
+    command: ["/bin/bash", "/bootstrap/bootstrap.sh"]
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://${GLITCHTIP_POSTGRES_USER:-glitchtip}:${GLITCHTIP_POSTGRES_PASSWORD:-glitchtip}@postgres:5432/${GLITCHTIP_POSTGRES_DB:-glitchtip}
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY:-replace-me}
+      DEBUG: "True"
+      PORT: 8000
+      GLITCHTIP_DOMAIN: ${GLITCHTIP_DOMAIN:-http://localhost:8000}
+      EMAIL_URL: consolemail://
+      ENABLE_USER_REGISTRATION: "True"
+      ENABLE_ORGANIZATION_CREATION: "True"
+      DEFAULT_FROM_EMAIL: glitchtip@localhost
+      VALKEY_URL: ${GLITCHTIP_VALKEY_URL:-redis://valkey:6379/0}
+    volumes:
+      - ./infra/glitchtip/bootstrap.sh:/bootstrap/bootstrap.sh:ro
+      - glitchtip-bootstrap-data:/bootstrap/runtime
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_started
+      glitchtip-migrate:
+        condition: service_completed_successfully
+
+volumes:
+  prometheus-data:
+  loki-data:
+  tempo-data:
+  alloy-data:
+  grafana-data:
+  glitchtip-postgres-data:
+  glitchtip-bootstrap-data:

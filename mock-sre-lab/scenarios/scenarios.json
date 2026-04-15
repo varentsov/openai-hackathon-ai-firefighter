@@ -1,0 +1,53 @@
+{
+  "scenarios": {
+    "payment_timeout": {
+      "default_duration_seconds": 120,
+      "error_rate": 0.8,
+      "timeout_seconds": 1.2,
+      "retry_attempts": 3
+    },
+    "db_pool_exhaustion": {
+      "default_duration_seconds": 150,
+      "acquire_timeout_seconds": 0.08,
+      "slowdown_seconds_min": 0.2,
+      "slowdown_seconds_max": 0.8,
+      "error_rate": 0.25
+    },
+    "memory_leak": {
+      "default_duration_seconds": 300,
+      "leak_chunk_kb": 512
+    },
+    "error_burst": {
+      "default_duration_seconds": 90,
+      "error_rate": 0.55
+    }
+  },
+  "schedules": {
+    "default": {
+      "cycle_seconds": 900,
+      "events": [
+        {
+          "name": "payment_timeout",
+          "offset_seconds": 90,
+          "duration_seconds": 120
+        },
+        {
+          "name": "db_pool_exhaustion",
+          "offset_seconds": 300,
+          "duration_seconds": 150
+        },
+        {
+          "name": "error_burst",
+          "offset_seconds": 540,
+          "duration_seconds": 90
+        },
+        {
+          "name": "memory_leak",
+          "offset_seconds": 720,
+          "duration_seconds": 300
+        }
+      ]
+    }
+  }
+}
+

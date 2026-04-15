@@ -115,10 +115,9 @@ export class MockDataAdapter {
 
   async getDemoState(): Promise<DemoStateResponse> {
     const scenario = this.getScenario();
-    const activeFaults = await this.getActiveFaults();
-    const metricsSource = activeFaults.length
-      ? "prometheus_mock_sre_lab"
-      : "static_fixture";
+    const liveState = await this.mockSreLabClient.getLiveState();
+    const activeFaults = liveState?.activeFaults ?? [];
+    const metricsSource = liveState ? "prometheus_mock_sre_lab" : "static_fixture";
 
     return {
       incident: await this.getIncident(),

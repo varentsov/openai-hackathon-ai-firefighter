@@ -294,7 +294,10 @@ export function renderDashboardHtml(): string {
         elements.alertMeta.textContent =
           data.incident.service + " / " + data.incident.symptom + " / " + data.incident.severity + " / started " + data.incident.startedAt;
         elements.corePathText.textContent =
-          "Checkout is the protected journey. Recommendations stay degradable while rollback guidance remains available as the next recommendation.";
+          data.metricsSource === "prometheus_mock_sre_lab"
+            ? "Checkout is the protected journey. Metrics are coming from live mock-sre-lab Prometheus data" +
+              (data.activeFaults?.length ? " with active faults: " + data.activeFaults.join(", ") + "." : ".")
+            : "Checkout is the protected journey. Recommendations stay degradable while rollback guidance remains available as the next recommendation.";
         elements.architectureRefs.textContent = data.architectureReferences.join(", ");
       }
 

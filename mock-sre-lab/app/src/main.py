@@ -363,6 +363,30 @@ def create_app() -> FastAPI:
       flex-wrap: wrap;
       gap: 10px;
     }
+    .fault-actions {
+      display: grid;
+      gap: 12px;
+    }
+    .fault-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      gap: 10px;
+      align-items: center;
+      padding: 12px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.68);
+      border: 1px solid rgba(28, 26, 23, 0.08);
+    }
+    .fault-name {
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .fault-meta {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
     .chip {
       border-radius: 999px;
       padding: 10px 14px;
@@ -372,6 +396,48 @@ def create_app() -> FastAPI:
     }
     .chip.active { color: white; background: var(--danger); border-color: transparent; }
     .chip.ok { color: white; background: var(--accent); border-color: transparent; }
+    .btn {
+      appearance: none;
+      border: 0;
+      border-radius: 999px;
+      padding: 10px 14px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 120ms ease, opacity 120ms ease, background 120ms ease;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn:disabled { opacity: 0.45; cursor: wait; transform: none; }
+    .btn.fire { background: var(--danger); color: white; }
+    .btn.clear { background: rgba(28, 26, 23, 0.08); color: var(--ink); }
+    .control-bar {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin: 10px 0 14px;
+      flex-wrap: wrap;
+    }
+    .duration-picker {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .duration-picker select {
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      padding: 8px 12px;
+      background: rgba(255, 255, 255, 0.85);
+      font: inherit;
+      color: var(--ink);
+    }
+    .notice {
+      min-height: 1.3rem;
+      font-size: 0.92rem;
+      color: var(--muted);
+    }
     table {
       width: 100%;
       border-collapse: collapse;
@@ -468,6 +534,20 @@ def create_app() -> FastAPI:
       <article class="card span-4">
         <h2>Faults</h2>
         <div class="chips" id="faultsList"></div>
+        <div class="control-bar">
+          <label class="duration-picker" for="faultDuration">
+            Duration
+            <select id="faultDuration">
+              <option value="30">30s</option>
+              <option value="60">60s</option>
+              <option value="120" selected>120s</option>
+              <option value="300">300s</option>
+            </select>
+          </label>
+          <button class="btn clear" id="clearAllFaults" type="button">Clear all faults</button>
+        </div>
+        <div class="notice" id="faultStatus">Use the buttons below to trigger scenarios.</div>
+        <div class="fault-actions" id="faultControls"></div>
         <h2 style="margin-top: 18px;">Exceptions</h2>
         <table>
           <thead>
@@ -485,6 +565,8 @@ def create_app() -> FastAPI:
   <script>
     const formatInteger = (value) => new Intl.NumberFormat().format(value);
     const formatMegabytes = (bytes) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    let summaryState = null;
+    let controlsBusy = false;
 
     function renderStatusCodes(statusCodes) {
       const entries = Object.entries(statusCodes || {});
@@ -521,6 +603,31 @@ def create_app() -> FastAPI:
       }).join('');
     }
 
+    function renderFaultControls(faultStates, activeFaults) {
+      const entries = Object.entries(faultStates || {});
+      if (!entries.length) {
+        return '<div class="muted">No fault controls available yet.</div>';
+      }
+
+      return entries.map(([fault, active]) => {
+        const isActive = activeFaults.includes(fault) || active;
+        return `
+          <div class="fault-row">
+            <div>
+              <div class="fault-name">${fault}</div>
+              <span class="fault-meta">${isActive ? 'Currently active' : 'Currently idle'}</span>
+            </div>
+            <button class="btn fire" type="button" data-fault="${fault}" data-enabled="true" ${controlsBusy ? 'disabled' : ''}>
+              Activate
+            </button>
+            <button class="btn clear" type="button" data-fault="${fault}" data-enabled="false" ${(!isActive || controlsBusy) ? 'disabled' : ''}>
+              Clear
+            </button>
+          </div>
+        `;
+      }).join('');
+    }
+
     function renderExceptions(exceptions) {
       if (!exceptions.length) {
         return '<tr><td colspan="2" class="muted">No exceptions recorded.</td></tr>';
@@ -534,6 +641,90 @@ def create_app() -> FastAPI:
       `).join('');
     }
 
+    async function setFault(fault, enabled) {
+      const durationSeconds = Number(document.getElementById('faultDuration').value || 120);
+      const payload = enabled
+        ? { enabled: true, duration_seconds: durationSeconds, source: 'dashboard' }
+        : { enabled: false, source: 'dashboard' };
+
+      controlsBusy = true;
+      document.getElementById('faultStatus').textContent = `${enabled ? 'Activating' : 'Clearing'} ${fault}...`;
+      renderControls();
+
+      const response = await fetch(`/internal/faults/${fault}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error(`fault request failed with status ${response.status}`);
+      }
+
+      const result = await response.json();
+      document.getElementById('faultStatus').textContent = enabled
+        ? `${fault} activated for ${durationSeconds}s`
+        : `${fault} cleared`;
+      summaryState = summaryState ? { ...summaryState, active_faults: result.active_faults } : summaryState;
+      await refresh();
+    }
+
+    async function clearAllFaults() {
+      if (!summaryState) {
+        return;
+      }
+
+      controlsBusy = true;
+      document.getElementById('faultStatus').textContent = 'Clearing all active faults...';
+      renderControls();
+
+      const activeFaults = [...(summaryState.active_faults || [])];
+      for (const fault of activeFaults) {
+        const response = await fetch(`/internal/faults/${fault}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ enabled: false, source: 'dashboard' }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`failed clearing ${fault} with status ${response.status}`);
+        }
+      }
+
+      document.getElementById('faultStatus').textContent = activeFaults.length
+        ? 'All active faults cleared'
+        : 'No active faults to clear';
+      await refresh();
+    }
+
+    function bindControls() {
+      document.querySelectorAll('[data-fault][data-enabled]').forEach((button) => {
+        button.addEventListener('click', async () => {
+          const fault = button.dataset.fault;
+          const enabled = button.dataset.enabled === 'true';
+          try {
+            await setFault(fault, enabled);
+          } catch (error) {
+            document.getElementById('faultStatus').textContent = `Fault action failed: ${error.message}`;
+          } finally {
+            controlsBusy = false;
+            renderControls();
+          }
+        });
+      });
+    }
+
+    function renderControls() {
+      if (!summaryState) {
+        return;
+      }
+
+      document.getElementById('faultControls').innerHTML = renderFaultControls(summaryState.fault_states, summaryState.active_faults);
+      const clearAllButton = document.getElementById('clearAllFaults');
+      clearAllButton.disabled = controlsBusy;
+      bindControls();
+    }
+
     async function refresh() {
       const response = await fetch('/api/v1/dashboard/summary', { cache: 'no-store' });
       if (!response.ok) {
@@ -541,6 +732,7 @@ def create_app() -> FastAPI:
       }
 
       const summary = await response.json();
+      summaryState = summary;
       document.getElementById('generatedAt').textContent = `${summary.generated_at} | ${summary.service}`;
       document.getElementById('totalRequests').textContent = formatInteger(summary.totals.requests);
       document.getElementById('totalErrors').textContent = formatInteger(summary.totals.errors);
@@ -550,8 +742,20 @@ def create_app() -> FastAPI:
       document.getElementById('dbPoolChip').textContent = `${formatInteger(summary.gauges.db_pool_rejections_total)} db pool rejections`;
       document.getElementById('routesTable').innerHTML = renderRoutes(summary.routes);
       document.getElementById('faultsList').innerHTML = renderFaults(summary.fault_states, summary.active_faults);
+      renderControls();
       document.getElementById('exceptionsTable').innerHTML = renderExceptions(summary.exceptions);
     }
+
+    document.getElementById('clearAllFaults').addEventListener('click', async () => {
+      try {
+        await clearAllFaults();
+      } catch (error) {
+        document.getElementById('faultStatus').textContent = `Clear-all failed: ${error.message}`;
+      } finally {
+        controlsBusy = false;
+        renderControls();
+      }
+    });
 
     async function loop() {
       try {

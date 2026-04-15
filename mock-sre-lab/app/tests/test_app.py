@@ -26,6 +26,13 @@ def test_fault_activation_endpoint_enables_scenario() -> None:
     assert "error_burst" in response.json()["active_faults"]
 
 
+def test_fault_activation_endpoint_disables_scenario() -> None:
+    client.post("/internal/faults/payment_timeout", json={"enabled": True, "duration_seconds": 30})
+    response = client.post("/internal/faults/payment_timeout", json={"enabled": False})
+    assert response.status_code == 200
+    assert "payment_timeout" not in response.json()["active_faults"]
+
+
 def test_dashboard_summary_returns_expected_shape() -> None:
     client.get("/api/v1/catalog/demo-sku")
     response = client.get("/api/v1/dashboard/summary")
@@ -42,3 +49,4 @@ def test_dashboard_page_renders() -> None:
     response = client.get("/dashboard")
     assert response.status_code == 200
     assert "Mock SRE Lab" in response.text
+    assert "Clear all faults" in response.text

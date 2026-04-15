@@ -20,6 +20,7 @@ docker compose up --build -d
 3. Open the local tools:
 
 - App: `http://localhost:8080`
+- Built-in dashboard: `http://localhost:8080/dashboard`
 - Grafana: `http://localhost:3000`
 - Prometheus: `http://localhost:9090`
 - Loki health: `http://localhost:3100/ready`

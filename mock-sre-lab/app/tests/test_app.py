@@ -25,3 +25,20 @@ def test_fault_activation_endpoint_enables_scenario() -> None:
     assert response.status_code == 200
     assert "error_burst" in response.json()["active_faults"]
 
+
+def test_dashboard_summary_returns_expected_shape() -> None:
+    client.get("/api/v1/catalog/demo-sku")
+    response = client.get("/api/v1/dashboard/summary")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["service"] == "mock-sre-app"
+    assert "totals" in payload
+    assert "routes" in payload
+    assert "gauges" in payload
+
+
+def test_dashboard_page_renders() -> None:
+    response = client.get("/dashboard")
+    assert response.status_code == 200
+    assert "Mock SRE Lab" in response.text

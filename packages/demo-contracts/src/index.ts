@@ -6,7 +6,8 @@ export type FaultScenario =
   | "faulty_commit_regression"
   | "payment_timeout"
   | "db_pool_exhaustion"
-  | "error_burst";
+  | "error_burst"
+  | "memory_leak";
 export type ActionId =
   | "disable_recommendations"
   | "rollback_canary"
@@ -142,6 +143,8 @@ export interface DemoStateResponse {
   beforeAvailable: boolean;
   afterAvailable: boolean;
   recommendationsEnabled: boolean;
+  metricsSource?: "static_fixture" | "prometheus_mock_sre_lab";
+  activeFaults?: FaultScenario[];
   architectureReferences: string[];
 }
 

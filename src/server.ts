@@ -137,17 +137,17 @@ export async function routeRequest(
   }
 
   if (method === "GET" && url.pathname === "/api/demo-state") {
-    json(response, 200, context.dataAdapter.getDemoState());
+    json(response, 200, await context.dataAdapter.getDemoState());
     return;
   }
 
   if (method === "POST" && url.pathname === "/api/analyze") {
-    json(response, 200, context.orchestrator.analyzeIncident());
+    json(response, 200, await context.orchestrator.analyzeIncident());
     return;
   }
 
   if (method === "POST" && url.pathname === "/api/actions/disable-recommendations") {
-    json(response, 200, context.orchestrator.executeDisableRecommendations());
+    json(response, 200, await context.orchestrator.executeDisableRecommendations());
     return;
   }
 

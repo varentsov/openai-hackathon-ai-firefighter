@@ -5,13 +5,13 @@ import { InMemoryLangfuseAdapter } from "../adapters/langfuseAdapter.js";
 import { MockDataAdapter } from "../adapters/mockDataAdapter.js";
 import { AgentOrchestrator } from "./agentOrchestrator.js";
 
-test("analyzeIncident ranks graceful degradation first and surfaces the suspect commit", () => {
+test("analyzeIncident ranks graceful degradation first and surfaces the suspect commit", async () => {
   const orchestrator = new AgentOrchestrator({
     dataAdapter: new MockDataAdapter(),
     langfuseAdapter: new InMemoryLangfuseAdapter(),
   });
 
-  const analysis = orchestrator.analyzeIncident();
+  const analysis = await orchestrator.analyzeIncident();
 
   assert.equal(analysis.pressurePoint, "recommendations");
   assert.equal(analysis.bestFirstAction.id, "disable_recommendations");
@@ -21,14 +21,14 @@ test("analyzeIncident ranks graceful degradation first and surfaces the suspect 
   assert.equal(analysis.commits.length, 3);
 });
 
-test("executeDisableRecommendations appends recovery trace steps and returns healthy after metrics", () => {
+test("executeDisableRecommendations appends recovery trace steps and returns healthy after metrics", async () => {
   const orchestrator = new AgentOrchestrator({
     dataAdapter: new MockDataAdapter(),
     langfuseAdapter: new InMemoryLangfuseAdapter(),
   });
 
-  const analysis = orchestrator.analyzeIncident();
-  const execution = orchestrator.executeDisableRecommendations();
+  const analysis = await orchestrator.analyzeIncident();
+  const execution = await orchestrator.executeDisableRecommendations();
   const traceSteps = orchestrator.getTraceEvents(analysis.traceId).map((event) => event.step);
 
   assert.equal(execution.result, "executed");

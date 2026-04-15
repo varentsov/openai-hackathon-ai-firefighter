@@ -1,0 +1,10 @@
+.env
+__pycache__/
+.pytest_cache/
+*.pyc
+logs/
+infra/grafana/data/
+infra/loki/data/
+infra/tempo/data/
+infra/glitchtip/postgres/
+

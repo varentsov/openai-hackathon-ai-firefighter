@@ -27,18 +27,22 @@ docker compose up --build -d
 
 ## GlitchTip setup
 
-GlitchTip is included, but a project DSN is not auto-provisioned. For full error tracking:
+GlitchTip is auto-bootstrapped on startup for local use. The bootstrap command creates:
 
-1. Open `http://localhost:8000`.
-2. Create the first user, organization, team, and project.
-3. Copy the project DSN into `GLITCHTIP_DSN` in `.env`.
-4. Restart the app service:
+- user: `test@example.com`
+- password: `admin_pass`
+- org: `org`
+- team: `team`
+- project: `project`
+- API token and DSNs in the shared runtime env file: `glitchtip.env`
 
-```bash
-docker compose up -d --build app
-```
+The app automatically loads the generated internal project DSN if `GLITCHTIP_DSN` is blank in `.env`. The bootstrap file contains:
 
-The app runs without a DSN; only Sentry-compatible error export is disabled until you add one.
+- `GLITCHTIP_DSN` for container-to-container delivery (`glitchtip-web:8000`)
+- `GLITCHTIP_PUBLIC_DSN` for local browser/API references (`localhost:8000`)
+- `GLITCHTIP_API_TOKEN` for GlitchTip API access during verification
+
+If you want to override the local auto-generated DSN, set `GLITCHTIP_DSN` explicitly in `.env` and restart the app.
 
 ## Fault injection
 

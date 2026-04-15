@@ -12,15 +12,19 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://alloy:4317}
       GLITCHTIP_DSN: ${GLITCHTIP_DSN:-}
+      GLITCHTIP_BOOTSTRAP_ENV_FILE: /app/runtime/glitchtip.env
       SCENARIO_FILE: ${SCENARIO_FILE:-/app/scenarios/scenarios.json}
       FAULT_SCHEDULE: ${FAULT_SCHEDULE:-default}
     volumes:
       - ./scenarios:/app/scenarios:ro
+      - glitchtip-bootstrap-data:/app/runtime:ro
     ports:
       - "${APP_PORT:-8080}:8080"
     depends_on:
       alloy:
         condition: service_started
+      glitchtip-bootstrap:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   loadgen:
@@ -151,6 +155,7 @@ services:
     environment:
       DATABASE_URL: postgres://${GLITCHTIP_POSTGRES_USER:-glitchtip}:${GLITCHTIP_POSTGRES_PASSWORD:-glitchtip}@postgres:5432/${GLITCHTIP_POSTGRES_DB:-glitchtip}
       SECRET_KEY: ${GLITCHTIP_SECRET_KEY:-replace-me}
+      DEBUG: "True"
       PORT: 8000
       GLITCHTIP_DOMAIN: ${GLITCHTIP_DOMAIN:-http://localhost:8000}
       EMAIL_URL: consolemail://
@@ -177,6 +182,7 @@ services:
     environment:
       DATABASE_URL: postgres://${GLITCHTIP_POSTGRES_USER:-glitchtip}:${GLITCHTIP_POSTGRES_PASSWORD:-glitchtip}@postgres:5432/${GLITCHTIP_POSTGRES_DB:-glitchtip}
       SECRET_KEY: ${GLITCHTIP_SECRET_KEY:-replace-me}
+      DEBUG: "True"
       PORT: 8000
       GLITCHTIP_DOMAIN: ${GLITCHTIP_DOMAIN:-http://localhost:8000}
       EMAIL_URL: consolemail://
@@ -202,6 +208,7 @@ services:
     environment:
       DATABASE_URL: postgres://${GLITCHTIP_POSTGRES_USER:-glitchtip}:${GLITCHTIP_POSTGRES_PASSWORD:-glitchtip}@postgres:5432/${GLITCHTIP_POSTGRES_DB:-glitchtip}
       SECRET_KEY: ${GLITCHTIP_SECRET_KEY:-replace-me}
+      DEBUG: "True"
       PORT: 8000
       GLITCHTIP_DOMAIN: ${GLITCHTIP_DOMAIN:-http://localhost:8000}
       EMAIL_URL: consolemail://
@@ -215,6 +222,34 @@ services:
       valkey:
         condition: service_started
 
+  glitchtip-bootstrap:
+    image: glitchtip/glitchtip:latest
+    user: "0"
+    command: ["/bin/bash", "/bootstrap/bootstrap.sh"]
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://${GLITCHTIP_POSTGRES_USER:-glitchtip}:${GLITCHTIP_POSTGRES_PASSWORD:-glitchtip}@postgres:5432/${GLITCHTIP_POSTGRES_DB:-glitchtip}
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY:-replace-me}
+      DEBUG: "True"
+      PORT: 8000
+      GLITCHTIP_DOMAIN: ${GLITCHTIP_DOMAIN:-http://localhost:8000}
+      EMAIL_URL: consolemail://
+      ENABLE_USER_REGISTRATION: "True"
+      ENABLE_ORGANIZATION_CREATION: "True"
+      DEFAULT_FROM_EMAIL: glitchtip@localhost
+      VALKEY_URL: ${GLITCHTIP_VALKEY_URL:-redis://valkey:6379/0}
+    volumes:
+      - ./infra/glitchtip/bootstrap.sh:/bootstrap/bootstrap.sh:ro
+      - glitchtip-bootstrap-data:/bootstrap/runtime
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_started
+      glitchtip-migrate:
+        condition: service_completed_successfully
+
 volumes:
   prometheus-data:
   loki-data:
@@ -222,3 +257,4 @@ volumes:
   alloy-data:
   grafana-data:
   glitchtip-postgres-data:
+  glitchtip-bootstrap-data:

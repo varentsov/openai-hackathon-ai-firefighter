@@ -11,14 +11,14 @@ from typing import Any
 
 import sentry_sdk
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.trace import Status, StatusCode
-from prometheus_client import make_asgi_app
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from .config import settings
 from .logging_setup import configure_logging, request_id_var, route_var, scenario_var
@@ -66,8 +66,6 @@ def create_app() -> FastAPI:
         description="A failure-prone mock app for SRE agent debugging exercises.",
         lifespan=lifespan,
     )
-
-    application.mount("/metrics", make_asgi_app())
 
     @application.middleware("http")
     async def request_observability(request: Request, call_next):
@@ -141,6 +139,10 @@ def create_app() -> FastAPI:
             "service": settings.service_name,
             "active_faults": manager.active_faults(),
         }
+
+    @application.get("/metrics")
+    async def metrics() -> Response:
+        return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
     @application.get("/api/v1/catalog/{sku}")
     async def catalog(sku: str) -> dict[str, Any]:

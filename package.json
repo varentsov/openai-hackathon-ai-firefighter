@@ -1,0 +1,40 @@
+{
+  "name": "openai-hackathon-ai-firefighter",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "dependencies": {
+    "@openai-hackathon/demo-contracts": "file:packages/demo-contracts"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build:contracts": "npm run build --workspace @openai-hackathon/demo-contracts",
+    "build:api": "tsc -p tsconfig.json",
+    "build:ui": "npm run build --workspace @openai-hackathon/demo-ui",
+    "build": "npm run build:contracts && npm run build:api && npm run build:ui",
+    "dev:api": "npm run build:contracts && node --import tsx src/index.ts",
+    "dev:ui": "npm run dev --workspace @openai-hackathon/demo-ui",
+    "dev": "concurrently -k -n api,ui -c auto \"npm run dev:api\" \"npm run dev:ui\"",
+    "start": "node dist/index.js",
+    "langfuse:help": "npx langfuse --help",
+    "langfuse:api:help": "npx langfuse api help",
+    "langfuse:traces": "npx langfuse --env .env.langfuse api traces list --limit 10",
+    "langfuse:traces:curl": "npx langfuse --env .env.langfuse api traces list --limit 5 --curl",
+    "test:api": "npm run build:contracts && node --import tsx --test src/*.test.ts src/**/*.test.ts",
+    "test:ui": "npm run test --workspace @openai-hackathon/demo-ui",
+    "test": "npm run test:api && npm run test:ui",
+    "typecheck:api": "npm run build:contracts && tsc -p tsconfig.json --noEmit",
+    "typecheck:ui": "npm run typecheck --workspace @openai-hackathon/demo-ui",
+    "typecheck": "npm run typecheck:api && npm run typecheck:ui"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "concurrently": "^9.2.1",
+    "langfuse-cli": "^0.0.8",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2"
+  }
+}

@@ -6,6 +6,8 @@ This folder contains a local sandbox for testing an AI SRE agent against real te
 - a synthetic traffic generator
 - Prometheus, Loki, Tempo, Grafana, Alloy, and GlitchTip
 
+The agent-facing integration contract is documented in [SRE_AGENT_INTEGRATION.md](/Users/nikon/Workspace/Local/openai-hackathon-ai-firefighter/mock-sre-lab/SRE_AGENT_INTEGRATION.md).
+
 ## Start
 
 1. Copy `.env.example` to `.env`.
